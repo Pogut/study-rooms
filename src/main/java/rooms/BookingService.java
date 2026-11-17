@@ -8,9 +8,12 @@ import java.util.UUID;
 
 public class BookingService {
     private final RoomRepository repository;
+    private final CancellationPolicy cancellationPolicy;
+    private final BookingAudit audit = new BookingAudit();
 
-    public BookingService(RoomRepository repository) {
+    public BookingService(RoomRepository repository, CancellationPolicy cancellationPolicy) {
         this.repository = repository;
+        this.cancellationPolicy = cancellationPolicy;
     }
 
     public List<Room> freeRooms(LocalDateTime start, LocalDateTime end) {
@@ -47,6 +50,7 @@ public class BookingService {
         }
         Booking booking = new Booking(UUID.randomUUID().toString(), roomId, studentId, start, end);
         repository.saveBooking(booking);
+        audit.record("booked", booking);
         return booking;
     }
 
@@ -54,9 +58,10 @@ public class BookingService {
         if (!booking.getStudentId().equals(studentId)) {
             throw new IllegalStateException("You can only cancel your own booking");
         }
-        if (Duration.between(now, booking.getStart()).toMinutes() < 15) {
+        if (!cancellationPolicy.canCancel(booking, now)) {
             throw new IllegalStateException("Too late to cancel");
         }
         repository.deleteBooking(booking);
+        audit.record("cancelled", booking);
     }
 }
